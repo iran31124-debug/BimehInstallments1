@@ -1,0 +1,19 @@
+InsuranceAccounting/
+├── .github/
+│   └── workflows/
+│       └── build-apk.yml
+├── app/
+│   ├── src/main/
+│   │   ├── java/ir/insurance/accounting/
+│   │   │   └── MainActivity.kt
+│   │   ├── res/
+│   │   │   ├── values/
+│   │   │   └── drawable/
+│   │   └── AndroidManifest.xml
+│   └── build.gradle.kts
+├── build.gradle.kts
+├── settings.gradle.kts
+├── gradle.properties
+├── gradlew
+├── gradlew.bat
+└── README.md
