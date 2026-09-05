@@ -1,12 +1,12 @@
 <resources>
     <color name="brand">#0B6B53</color>
     <color name="brand_dark">#064C3C</color>
-    <color name="accent">#D5A94B</color>
-    <color name="bg">#F5F7F6</color>
+    <color name="accent">#D6A84B</color>
+    <color name="bg">#F3F6F4</color>
     <color name="surface">#FFFFFF</color>
-    <color name="text">#17211E</color>
-    <color name="muted">#64716C</color>
+    <color name="text">#18231F</color>
+    <color name="muted">#65736D</color>
     <color name="danger">#B3261E</color>
-    <color name="success">#16794D</color>
-    <color name="warning">#9B6500</color>
+    <color name="warning">#9A6700</color>
+    <color name="success">#18794E</color>
 </resources>
