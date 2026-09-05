@@ -1,122 +1,205 @@
-package ir.bimeh.installments;
+package com.example.bimeinstallments;
 
-import android.app.*;
-import android.os.Bundle;
-import android.content.*;
-import android.database.Cursor;
-import android.database.sqlite.SQLiteDatabase;
-import android.database.sqlite.SQLiteOpenHelper;
+import android.app.Activity;
+import android.app.AlertDialog;
+import android.content.Context;
+import android.content.SharedPreferences;
 import android.graphics.Color;
-import android.graphics.drawable.GradientDrawable;
+import android.os.Bundle;
 import android.text.InputType;
-import android.view.*;
-import android.widget.*;
+import android.view.Gravity;
+import android.view.View;
+import android.widget.ArrayAdapter;
+import android.widget.Button;
+import android.widget.EditText;
+import android.widget.LinearLayout;
+import android.widget.ScrollView;
+import android.widget.Spinner;
+import android.widget.TextView;
+
+import org.json.JSONArray;
+import org.json.JSONObject;
+
 import java.text.NumberFormat;
-import java.text.SimpleDateFormat;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
 
 public class MainActivity extends Activity {
-    private DB db;
+    private static final String PREFS = "insurance_data";
+    private static final String KEY_POLICIES = "policies";
+    private final List<Policy> policies = new ArrayList<>();
+    private SharedPreferences prefs;
     private LinearLayout content;
-    private TextView totalPolicies, totalReceived, totalDebt, overdueCount;
-    private final int NAVY=Color.rgb(11,31,51), BLUE=Color.rgb(21,101,216), CYAN=Color.rgb(18,184,200);
-    private final int GREEN=Color.rgb(23,166,115), ORANGE=Color.rgb(245,158,11), RED=Color.rgb(225,77,90);
-    private final int BG=Color.rgb(244,247,251), CARD=Color.WHITE, TEXT=Color.rgb(18,35,58), MUTED=Color.rgb(107,122,144), LINE=Color.rgb(229,234,242);
+    private final NumberFormat money = NumberFormat.getInstance(new Locale("fa", "IR"));
 
-    @Override public void onCreate(Bundle b){ super.onCreate(b); db=new DB(this); dashboard(); }
+    private static class Policy {
+        String customer = "";
+        String phone = "";
+        String plate = "";
+        String policyNo = "";
+        long total;
+        long down;
+        long paid;
+        int installments;
+        String firstDue = "";
+        String note = "";
 
-    TextView text(String s,float sp,int color){ TextView t=new TextView(this); t.setText(s); t.setTextSize(sp); t.setTextColor(color); t.setGravity(Gravity.RIGHT|Gravity.CENTER_VERTICAL); t.setLayoutDirection(View.LAYOUT_DIRECTION_RTL); return t; }
-    TextView title(String s){ TextView t=text(s,22,Color.WHITE); t.setTypeface(null,1); t.setPadding(18,8,18,8); return t; }
-    GradientDrawable bg(int color,float radius){ GradientDrawable g=new GradientDrawable(); g.setColor(color); g.setCornerRadius(radius); return g; }
-    View space(int h){ Space s=new Space(this); s.setLayoutParams(new LinearLayout.LayoutParams(1,h)); return s; }
-    LinearLayout vbox(){ LinearLayout l=new LinearLayout(this); l.setOrientation(LinearLayout.VERTICAL); l.setLayoutDirection(View.LAYOUT_DIRECTION_RTL); return l; }
-    LinearLayout hbox(){ LinearLayout l=new LinearLayout(this); l.setOrientation(LinearLayout.HORIZONTAL); l.setGravity(Gravity.CENTER_VERTICAL); l.setLayoutDirection(View.LAYOUT_DIRECTION_RTL); return l; }
-    TextView label(String s){ TextView t=text(s,13,MUTED); t.setPadding(0,0,0,6); return t; }
-
-    void shell(String pageTitle){
-        LinearLayout root=vbox(); root.setBackgroundColor(BG);
-        LinearLayout header=hbox(); header.setPadding(16,16,16,16); header.setBackground(bg(NAVY,0));
-        TextView back=text("‹",38,Color.WHITE); back.setGravity(Gravity.CENTER); back.setOnClickListener(v->dashboard());
-        header.addView(back,new LinearLayout.LayoutParams(52,64));
-        header.addView(title(pageTitle),new LinearLayout.LayoutParams(0,64,1));
-        root.addView(header);
-        ScrollView sc=new ScrollView(this); sc.setFillViewport(true); content=vbox(); content.setPadding(18,18,18,28); sc.addView(content); root.addView(sc,new LinearLayout.LayoutParams(-1,0,1)); setContentView(root);
+        long debt() { return Math.max(0L, total - paid); }
+        long each() { return installments > 0 ? (total - down) / installments : 0; }
+        int paidCount() { long e = each(); return e > 0 ? (int)Math.min(installments, Math.max(0, (paid - down) / e)) : 0; }
     }
 
-    void dashboard(){
-        LinearLayout root=vbox(); root.setBackgroundColor(BG);
-        LinearLayout hero=vbox(); hero.setPadding(22,28,22,24); hero.setBackground(gradient(NAVY,BLUE));
-        TextView brand=text("مدیریت اقساط بیمه ثالث",26,Color.WHITE); brand.setTypeface(null,1); hero.addView(brand);
-        TextView sub=text("داشبورد حرفه‌ای نمایندگی",14,Color.rgb(205,220,235)); hero.addView(sub);
-        LinearLayout actions=hbox(); actions.setPadding(0,18,0,0);
-        TextView add=action("＋\nبیمه‌نامه جدید",CYAN); TextView report=action("▣\nگزارش مالی",GREEN);
-        actions.addView(add,new LinearLayout.LayoutParams(0,86,1)); actions.addView(spaceW(10),new LinearLayout.LayoutParams(10,1)); actions.addView(report,new LinearLayout.LayoutParams(0,86,1));
-        hero.addView(actions); root.addView(hero);
-        ScrollView sc=new ScrollView(this); LinearLayout body=vbox(); body.setPadding(18,18,18,28); sc.addView(body); root.addView(sc,new LinearLayout.LayoutParams(-1,0,1));
-
-        TextView sec=text("خلاصه وضعیت",17,TEXT); sec.setTypeface(null,1); body.addView(sec); body.addView(space(10));
-        LinearLayout row=hbox();
-        totalPolicies=metricCard("بیمه‌نامه‌ها","0",BLUE); totalReceived=metricCard("دریافتی","0 تومان",GREEN); row.addView(totalPolicies,new LinearLayout.LayoutParams(0,112,1)); row.addView(spaceW(10),new LinearLayout.LayoutParams(10,1)); row.addView(totalReceived,new LinearLayout.LayoutParams(0,112,1)); body.addView(row);
-        LinearLayout row2=hbox(); totalDebt=metricCard("مانده مطالبات","0 تومان",RED); overdueCount=metricCard("اقساط معوق","0",ORANGE); row2.addView(totalDebt,new LinearLayout.LayoutParams(0,112,1)); row2.addView(spaceW(10),new LinearLayout.LayoutParams(10,1)); row2.addView(overdueCount,new LinearLayout.LayoutParams(0,112,1)); body.addView(row2);
-        body.addView(space(16));
-        TextView actionsTitle=text("دسترسی سریع",17,TEXT); actionsTitle.setTypeface(null,1); body.addView(actionsTitle); body.addView(space(10));
-        TextView list=menuCard("▤", "لیست بیمه‌نامه‌ها", "جستجو، مشاهده جزئیات و ثبت پرداخت", BLUE); body.addView(list); list.setOnClickListener(v->listPolicies());
-        TextView next=menuCard("◷", "سررسیدهای نزدیک", "مشاهده اقساط آینده و وضعیت پرداخت", CYAN); body.addView(next); next.setOnClickListener(v->installmentBoard());
-        TextView search=menuCard("⌕", "جستجوی مشتری", "جستجو بر اساس نام یا پلاک", GREEN); body.addView(search); search.setOnClickListener(v->searchPolicies());
-        refreshDashboard(); setContentView(root);
+    @Override protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        prefs = getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        loadData();
+        buildHome();
     }
 
-    GradientDrawable gradient(int c1,int c2){ GradientDrawable g=new GradientDrawable(GradientDrawable.Orientation.TL_BR,new int[]{c1,c2}); g.setCornerRadius(0); return g; }
-    Space spaceW(int w){ Space s=new Space(this); s.setMinimumWidth(w); return s; }
-    TextView action(String s,int color){ TextView t=text(s,15,Color.WHITE); t.setGravity(Gravity.CENTER); t.setTypeface(null,1); t.setBackground(bg(color,18)); return t; }
-    TextView metricCard(String label,String value,int accent){ TextView box=text(label+"\n"+value,14,MUTED); box.setPadding(16,14,16,14); box.setTypeface(null,1); box.setBackground(bg(CARD,18)); box.setTextColor(TEXT); return box; }
-    TextView menuCard(String icon,String a,String b,int accent){ TextView t=text(icon+"   "+a+"\n             "+b,16,TEXT); t.setPadding(18,10,18,10); t.setBackground(bg(CARD,18)); return t; }
+    private int dp(int value) { return (int)(value * getResources().getDisplayMetrics().density + 0.5f); }
 
-    void refreshDashboard(){ totalPolicies.setText("بیمه‌نامه‌ها\n"+db.countPolicies()); totalReceived.setText("دریافتی\n"+money(db.sumPaid())+" تومان"); totalDebt.setText("مانده مطالبات\n"+money(db.sumDebt())+" تومان"); overdueCount.setText("اقساط معوق\n"+db.overdue()); }
-
-    EditText input(String hint,int type){ EditText e=new EditText(this); e.setHint(hint); e.setTextSize(15); e.setSingleLine(true); e.setPadding(18,4,18,4); e.setInputType(type); e.setLayoutDirection(View.LAYOUT_DIRECTION_RTL); e.setTextDirection(View.TEXT_DIRECTION_RTL); e.setBackground(bg(CARD,16)); LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,58); p.bottomMargin=10; e.setLayoutParams(p); return e; }
-    Button primary(String s){ Button b=new Button(this); b.setText(s); b.setTextSize(15); b.setTextColor(Color.WHITE); b.setAllCaps(false); b.setBackground(bg(BLUE,18)); b.setMinHeight(58); return b; }
-
-    void newPolicy(){ shell("ثبت بیمه‌نامه");
-        content.addView(label("اطلاعات مشتری")); EditText customer=input("نام و نام خانوادگی مشتری",InputType.TYPE_CLASS_TEXT); content.addView(customer); EditText phone=input("شماره تماس",InputType.TYPE_CLASS_PHONE); content.addView(phone);
-        content.addView(label("اطلاعات خودرو")); EditText plate=input("پلاک خودرو",InputType.TYPE_CLASS_TEXT); content.addView(plate);
-        content.addView(label("اطلاعات مالی")); EditText premium=input("کل حق بیمه (تومان)",InputType.TYPE_CLASS_NUMBER); content.addView(premium); EditText down=input("پیش‌پرداخت (تومان)",InputType.TYPE_CLASS_NUMBER); content.addView(down); EditText count=input("تعداد اقساط",InputType.TYPE_CLASS_NUMBER); content.addView(count); EditText day=input("روز سررسید ماه (۱ تا ۲۸)",InputType.TYPE_CLASS_NUMBER); content.addView(day);
-        Button save=primary("✓  ذخیره و ساخت جدول اقساط"); content.addView(save); save.setOnClickListener(v->{try{String n=customer.getText().toString().trim(); int p=Integer.parseInt(premium.getText().toString()); int d=Integer.parseInt(down.getText().toString()); int c=Integer.parseInt(count.getText().toString()); int dy=Integer.parseInt(day.getText().toString()); if(n.isEmpty()||p<0||d<0||d>p||c<1||dy<1||dy>28)throw new Exception(); long id=db.addPolicy(n,phone.getText().toString(),plate.getText().toString(),p,d,c,dy); Toast.makeText(this,"بیمه‌نامه با موفقیت ثبت شد",Toast.LENGTH_LONG).show(); policyDetail(id); }catch(Exception x){Toast.makeText(this,"لطفاً همه فیلدها را صحیح وارد کنید",Toast.LENGTH_LONG).show();}});
+    private TextView text(String value, int size) {
+        TextView t = new TextView(this);
+        t.setText(value);
+        t.setTextSize(size);
+        t.setTextColor(Color.rgb(40,40,40));
+        t.setGravity(Gravity.RIGHT | Gravity.CENTER_VERTICAL);
+        t.setPadding(dp(14), dp(10), dp(14), dp(10));
+        return t;
     }
 
-    void listPolicies(){ shell("بیمه‌نامه‌ها"); EditText s=input("جستجوی نام مشتری یا پلاک...",InputType.TYPE_CLASS_TEXT); content.addView(s); Button go=primary("⌕  جستجو"); content.addView(go); LinearLayout results=vbox(); content.addView(results); Runnable load=()->{results.removeAllViews(); for(Policy p:db.policies(s.getText().toString())){ TextView c=policyCard(p); results.addView(c); c.setOnClickListener(v->policyDetail(p.id)); }}; go.setOnClickListener(v->load.run()); load.run(); }
-
-    TextView policyCard(Policy p){ String status=p.debt==0?"تسویه‌شده":"مانده: "+money(p.debt)+" تومان"; TextView t=text(p.customer+"\n"+p.plate+"   •   "+status,15,TEXT); t.setPadding(18,14,18,14); t.setBackground(bg(CARD,18)); LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,82); lp.bottomMargin=10; t.setLayoutParams(lp); return t; }
-
-    void policyDetail(long id){ shell("جزئیات بیمه‌نامه"); Policy p=db.policy(id); TextView info=text("مشتری: "+p.customer+"\nخودرو: "+p.plate+"\nکل حق بیمه: "+money(p.premium)+" تومان\nپیش‌پرداخت: "+money(p.down)+" تومان\nمانده: "+money(p.debt)+" تومان",16,TEXT); info.setPadding(18,16,18,16); info.setBackground(bg(CARD,18)); content.addView(info); content.addView(space(14)); TextView h=text("جدول اقساط",18,TEXT); h.setTypeface(null,1); content.addView(h); content.addView(space(8));
-        for(Install i:db.installments(id)){ TextView card=text("قسط "+i.no+"  |  "+i.due+"\n"+money(i.amount)+" تومان     "+(i.paid?"✓ پرداخت شده":"● پرداخت نشده"),15,TEXT); card.setPadding(18,14,18,14); card.setBackground(bg(CARD,18)); LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,74); lp.bottomMargin=8; content.addView(card,lp); if(!i.paid){ Button pay=primary("ثبت پرداخت قسط "+i.no); LinearLayout.LayoutParams bp=new LinearLayout.LayoutParams(-1,54); bp.bottomMargin=10; content.addView(pay,bp); pay.setOnClickListener(v->{db.pay(i.id);policyDetail(id);}); }}
+    private Button menuButton(String value) {
+        Button b = new Button(this);
+        b.setText(value); b.setTextSize(16); b.setAllCaps(false); b.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(-1, dp(58));
+        p.setMargins(dp(5), dp(5), dp(5), dp(5)); b.setLayoutParams(p);
+        return b;
     }
 
-    void report(){ shell("گزارش مالی"); content.addView(reportBox("کل حق بیمه",money(db.sumPremium())+" تومان",BLUE)); content.addView(reportBox("کل پیش‌پرداخت",money(db.sumDown())+" تومان",CYAN)); content.addView(reportBox("کل دریافت",money(db.sumPaid())+" تومان",GREEN)); content.addView(reportBox("مانده مطالبات",money(db.sumDebt())+" تومان",RED)); content.addView(reportBox("اقساط معوق",String.valueOf(db.overdue()),ORANGE)); }
-    TextView reportBox(String a,String b,int c){ TextView t=text(a+"\n"+b,17,TEXT); t.setPadding(20,16,20,16); t.setTypeface(null,1); t.setBackground(bg(CARD,18)); LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,92); lp.bottomMargin=10; t.setLayoutParams(lp); return t; }
+    private EditText input(String hint, int type) {
+        EditText e = new EditText(this);
+        e.setHint(hint); e.setTextSize(16); e.setGravity(Gravity.RIGHT); e.setInputType(type);
+        e.setPadding(dp(12), 0, dp(12), 0);
+        e.setLayoutParams(new LinearLayout.LayoutParams(-1, dp(54)));
+        return e;
+    }
 
-    void installmentBoard(){ shell("سررسید اقساط"); for(InstallRow r:db.upcoming()){ TextView t=text(r.customer+"\nقسط "+r.no+" • "+r.due+" • "+money(r.amount)+" تومان",15,TEXT); t.setPadding(18,14,18,14); t.setBackground(bg(CARD,18)); LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,78); lp.bottomMargin=8; content.addView(t); }}
-    void searchPolicies(){ listPolicies(); }
+    private void base(String title) {
+        LinearLayout root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL); root.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
+        root.setBackgroundColor(Color.rgb(246,248,249));
+        TextView header = text(title, 21);
+        header.setTextColor(Color.WHITE); header.setBackgroundColor(Color.rgb(0,108,82)); header.setGravity(Gravity.CENTER);
+        root.addView(header, new LinearLayout.LayoutParams(-1, dp(72)));
+        ScrollView scroll = new ScrollView(this);
+        content = new LinearLayout(this); content.setOrientation(LinearLayout.VERTICAL); content.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
+        content.setPadding(dp(10), dp(10), dp(10), dp(20)); scroll.addView(content);
+        root.addView(scroll, new LinearLayout.LayoutParams(-1,0,1));
+        setContentView(root);
+    }
 
-    String money(int n){ return NumberFormat.getNumberInstance(Locale.US).format(n); }
+    private TextView stat(String title, String value) {
+        TextView t = text(title + "\n" + value, 15); t.setBackgroundColor(Color.WHITE);
+        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(0, dp(82),1); p.setMargins(dp(4),0,dp(4),dp(10));
+        t.setLayoutParams(p); return t;
+    }
 
-    static class Policy{long id;String customer,plate;int premium,down,debt;Policy(long i,String c,String pl,int pr,int d,int de){id=i;customer=c;plate=pl;premium=pr;down=d;debt=de;}}
-    static class Install{long id;int no,amount;String due;boolean paid;Install(long i,int n,int a,String u,boolean p){id=i;no=n;amount=a;due=u;paid=p;}}
-    static class InstallRow{String customer,due;int no,amount;InstallRow(String c,int n,String d,int a){customer=c;no=n;due=d;amount=a;}}
+    private void buildHome() {
+        base("مدیریت حرفه‌ای اقساط بیمه ثالث");
+        long total=0, paid=0, debt=0;
+        for (Policy p : policies) { total += p.total; paid += p.paid; debt += p.debt(); }
+        LinearLayout stats = new LinearLayout(this); stats.setOrientation(LinearLayout.HORIZONTAL); stats.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
+        stats.addView(stat("بیمه‌نامه", String.valueOf(policies.size())));
+        stats.addView(stat("دریافتی", money.format(paid)));
+        stats.addView(stat("مطالبات", money.format(debt)));
+        content.addView(stats);
 
-    static class DB extends SQLiteOpenHelper{
-        DB(Context c){super(c,"bimeh_pro.db",null,2);}
-        public void onCreate(SQLiteDatabase x){ x.execSQL("CREATE TABLE policies(id INTEGER PRIMARY KEY AUTOINCREMENT,customer TEXT,phone TEXT,plate TEXT,premium INTEGER,downpay INTEGER,count INTEGER,firstday INTEGER)"); x.execSQL("CREATE TABLE installments(id INTEGER PRIMARY KEY AUTOINCREMENT,policy INTEGER,no INTEGER,amount INTEGER,due TEXT,paid INTEGER DEFAULT 0,paydate TEXT)"); }
-        public void onUpgrade(SQLiteDatabase x,int a,int b){ if(a<2)x.execSQL("ALTER TABLE installments ADD COLUMN paydate TEXT"); }
-        long addPolicy(String c,String ph,String pl,int pr,int d,int cc,int day){SQLiteDatabase x=getWritableDatabase();ContentValues v=new ContentValues();v.put("customer",c);v.put("phone",ph);v.put("plate",pl);v.put("premium",pr);v.put("downpay",d);v.put("count",cc);v.put("firstday",day);long id=x.insert("policies",null,v);int rem=pr-d,q=rem/cc,r=rem%cc;Calendar cal=Calendar.getInstance(); cal.set(Calendar.DAY_OF_MONTH,1);for(int n=1;n<=cc;n++){cal.set(Calendar.DAY_OF_MONTH,Math.min(day,28));cal.add(Calendar.MONTH,1);int amt=q+(n<=r?1:0);String due=new SimpleDateFormat("yyyy/MM/dd",Locale.US).format(cal.getTime());ContentValues z=new ContentValues();z.put("policy",id);z.put("no",n);z.put("amount",amt);z.put("due",due);x.insert("installments",null,z);}return id;}
-        int sum(String q){Cursor c=getReadableDatabase().rawQuery(q,null);int v=0;if(c.moveToFirst())v=c.getInt(0);c.close();return v;}
-        int countPolicies(){return sum("SELECT COUNT(*) FROM policies");} int sumPremium(){return sum("SELECT COALESCE(SUM(premium),0) FROM policies");} int sumDown(){return sum("SELECT COALESCE(SUM(downpay),0) FROM policies");} int sumPaid(){return sum("SELECT COALESCE(SUM(amount),0) FROM installments WHERE paid=1");} int sumDebt(){return sumPremium()-sumDown()-sumPaid();}
-        int overdue(){return sum("SELECT COUNT(*) FROM installments WHERE paid=0 AND due < strftime('%Y/%m/%d','now','localtime')");}
-        ArrayList<Policy> policies(String filter){ArrayList<Policy>a=new ArrayList<>();String f="%"+(filter==null?"":filter)+"%";Cursor c=getReadableDatabase().rawQuery("SELECT id,customer,plate,premium,downpay FROM policies WHERE customer LIKE ? OR plate LIKE ? ORDER BY id DESC",new String[]{f,f});while(c.moveToNext()){long id=c.getLong(0);int pr=c.getInt(3),d=c.getInt(4),paid=paid(id);a.add(new Policy(id,c.getString(1),c.getString(2),pr,d,pr-d-paid));}c.close();return a;}
-        int paid(long id){return sum("SELECT COALESCE(SUM(amount),0) FROM installments WHERE policy="+id+" AND paid=1");}
-        Policy policy(long id){Cursor c=getReadableDatabase().rawQuery("SELECT customer,plate,premium,downpay FROM policies WHERE id=?",new String[]{""+id});c.moveToFirst();String n=c.getString(0),pl=c.getString(1);int pr=c.getInt(2),d=c.getInt(3);c.close();return new Policy(id,n,pl,pr,d,pr-d-paid(id));}
-        ArrayList<Install> installments(long id){ArrayList<Install>a=new ArrayList<>();Cursor c=getReadableDatabase().rawQuery("SELECT id,no,amount,due,paid FROM installments WHERE policy=? ORDER BY no",new String[]{""+id});while(c.moveToNext())a.add(new Install(c.getLong(0),c.getInt(1),c.getInt(2),c.getString(3),c.getInt(4)==1));c.close();return a;}
-        void pay(long id){ContentValues v=new ContentValues();v.put("paid",1);v.put("paydate",new SimpleDateFormat("yyyy/MM/dd",Locale.US).format(new Date()));getWritableDatabase().update("installments",v,"id=?",new String[]{""+id});}
-        ArrayList<InstallRow> upcoming(){ArrayList<InstallRow>a=new ArrayList<>();Cursor c=getReadableDatabase().rawQuery("SELECT p.customer,i.no,i.due,i.amount FROM installments i JOIN policies p ON p.id=i.policy WHERE i.paid=0 ORDER BY i.due LIMIT 50",null);while(c.moveToNext())a.add(new InstallRow(c.getString(0),c.getInt(1),c.getString(2),c.getInt(3)));c.close();return a;}
+        Button add = menuButton("＋ ثبت بیمه‌نامه جدید"); add.setOnClickListener(v -> showAddPolicy()); content.addView(add);
+        Button list = menuButton("👥 مشتریان و بیمه‌نامه‌ها"); list.setOnClickListener(v -> showPolicies()); content.addView(list);
+        Button inst = menuButton("▣ اقساط و سررسیدها"); inst.setOnClickListener(v -> showInstallments()); content.addView(inst);
+        Button pay = menuButton("✓ ثبت پرداخت"); pay.setOnClickListener(v -> showPayment()); content.addView(pay);
+        Button reports = menuButton("▤ گزارش مالی"); reports.setOnClickListener(v -> showReports()); content.addView(reports);
+        Button search = menuButton("⌕ جستجوی مشتری / پلاک / بیمه‌نامه"); search.setOnClickListener(v -> showSearch()); content.addView(search);
+        Button backup = menuButton("↥ پشتیبان‌گیری اطلاعات"); backup.setOnClickListener(v -> showBackup()); content.addView(backup);
+        content.addView(text("اطلاعات نسخه ۲ روی دستگاه ذخیره می‌شود و بعداً می‌توان آن را به دیتابیس ابری متصل کرد.",13));
+    }
+
+    private void showAddPolicy() {
+        LinearLayout box = new LinearLayout(this); box.setOrientation(LinearLayout.VERTICAL); box.setPadding(dp(6),0,dp(6),0); box.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
+        EditText customer=input("نام و نام خانوادگی مشتری *",InputType.TYPE_CLASS_TEXT); EditText phone=input("شماره موبایل",InputType.TYPE_CLASS_PHONE);
+        EditText plate=input("پلاک خودرو",InputType.TYPE_CLASS_TEXT); EditText policyNo=input("شماره بیمه‌نامه",InputType.TYPE_CLASS_TEXT);
+        EditText total=input("مبلغ کل (تومان) *",InputType.TYPE_CLASS_NUMBER); EditText down=input("پیش‌پرداخت (تومان) *",InputType.TYPE_CLASS_NUMBER);
+        EditText count=input("تعداد اقساط *",InputType.TYPE_CLASS_NUMBER); EditText due=input("اولین سررسید (مثلاً 1405/07/15)",InputType.TYPE_CLASS_TEXT);
+        EditText note=input("توضیحات",InputType.TYPE_CLASS_TEXT);
+        box.addView(customer); box.addView(phone); box.addView(plate); box.addView(policyNo); box.addView(total); box.addView(down); box.addView(count); box.addView(due); box.addView(note);
+        AlertDialog dialog = new AlertDialog.Builder(this).setTitle("ثبت بیمه‌نامه").setView(box).setNegativeButton("انصراف",null).setPositiveButton("ثبت",null).create();
+        dialog.setOnShowListener(x -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+            try {
+                String c=customer.getText().toString().trim(); long t=Long.parseLong(total.getText().toString().trim()); long d=Long.parseLong(down.getText().toString().trim()); int n=Integer.parseInt(count.getText().toString().trim());
+                if(c.isEmpty()||t<=0||d<0||d>t||n<=0) throw new Exception();
+                Policy p=new Policy(); p.customer=c; p.phone=phone.getText().toString().trim(); p.plate=plate.getText().toString().trim(); p.policyNo=policyNo.getText().toString().trim(); p.total=t; p.down=d; p.paid=d; p.installments=n; p.firstDue=due.getText().toString().trim(); p.note=note.getText().toString().trim(); policies.add(p); saveData(); dialog.dismiss(); buildHome();
+            } catch(Exception e) { total.setError("اطلاعات مبلغ، پیش‌پرداخت و اقساط صحیح نیست"); }
+        }));
+        dialog.show();
+    }
+
+    private void showPolicies() {
+        base("مشتریان و بیمه‌نامه‌ها");
+        if(policies.isEmpty()){content.addView(text("هنوز رکوردی ثبت نشده است.",18)); return;}
+        for(Policy p:policies){
+            TextView item=text("مشتری: "+p.customer+"\nپلاک: "+p.plate+" | بیمه‌نامه: "+p.policyNo+"\nکل: "+money.format(p.total)+" | پرداخت: "+money.format(p.paid)+"\nمانده: "+money.format(p.debt()),15);
+            item.setBackgroundColor(Color.WHITE); LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,dp(124)); lp.setMargins(0,0,0,dp(10)); content.addView(item,lp);
+        }
+    }
+
+    private void showInstallments() {
+        base("اقساط و سررسیدها");
+        if(policies.isEmpty()){content.addView(text("اطلاعاتی برای نمایش وجود ندارد.",18)); return;}
+        for(Policy p:policies){
+            long each=p.each(); int paidCount=p.paidCount();
+            content.addView(text(p.customer+" - "+p.plate+"\nهر قسط: "+money.format(each)+" تومان | اولین سررسید: "+(p.firstDue.isEmpty()?"ثبت نشده":p.firstDue),16));
+            for(int i=1;i<=p.installments;i++){
+                String state=i<=paidCount?"✓ پرداخت شده":"○ در انتظار پرداخت";
+                TextView item=text("قسط "+i+" از "+p.installments+" | "+state+"\nمبلغ: "+money.format(each)+" تومان",15); item.setBackgroundColor(Color.WHITE);
+                content.addView(item,new LinearLayout.LayoutParams(-1,dp(78)));
+            }
+            content.addView(text("مانده: "+money.format(p.debt())+" تومان",16));
+        }
+    }
+
+    private void showPayment() {
+        if(policies.isEmpty()){new AlertDialog.Builder(this).setTitle("ثبت پرداخت").setMessage("ابتدا یک بیمه‌نامه ثبت کنید.").setPositiveButton("باشه",null).show(); return;}
+        LinearLayout box=new LinearLayout(this); box.setOrientation(LinearLayout.VERTICAL); box.setLayoutDirection(View.LAYOUT_DIRECTION_RTL); box.setPadding(dp(6),0,dp(6),0);
+        String[] names=new String[policies.size()]; for(int i=0;i<policies.size();i++) names[i]=policies.get(i).customer+" - "+policies.get(i).plate;
+        Spinner spinner=new Spinner(this); spinner.setAdapter(new ArrayAdapter<>(this,android.R.layout.simple_spinner_dropdown_item,names)); box.addView(spinner);
+        EditText amount=input("مبلغ پرداختی *",InputType.TYPE_CLASS_NUMBER); box.addView(amount); EditText note=input("توضیحات پرداخت",InputType.TYPE_CLASS_TEXT); box.addView(note);
+        AlertDialog dialog=new AlertDialog.Builder(this).setTitle("ثبت پرداخت").setView(box).setNegativeButton("انصراف",null).setPositiveButton("ثبت",null).create();
+        dialog.setOnShowListener(x->dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{try{long a=Long.parseLong(amount.getText().toString().trim()); if(a<=0)throw new Exception(); Policy p=policies.get(spinner.getSelectedItemPosition()); p.paid=Math.min(p.total,p.paid+a); saveData(); dialog.dismiss(); buildHome();}catch(Exception e){amount.setError("مبلغ نامعتبر است");}})); dialog.show();
+    }
+
+    private void showReports(){
+        base("گزارش مالی"); long total=0,paid=0,debt=0; int count=0;
+        for(Policy p:policies){total+=p.total;paid+=p.paid;debt+=p.debt();count++;}
+        content.addView(stat("تعداد بیمه‌نامه",String.valueOf(count))); content.addView(stat("مجموع فروش",money.format(total)+" تومان")); content.addView(stat("مجموع دریافتی",money.format(paid)+" تومان")); content.addView(stat("مجموع مطالبات",money.format(debt)+" تومان"));
+        content.addView(text("درصد وصولی: "+(total==0?0:(paid*100/total))+"٪",18));
+    }
+
+    private void showSearch(){
+        final EditText q=input("نام، پلاک یا شماره بیمه‌نامه",InputType.TYPE_CLASS_TEXT);
+        new AlertDialog.Builder(this).setTitle("جستجو").setView(q).setNegativeButton("لغو",null).setPositiveButton("جستجو",(d,w)->{base("نتیجه جستجو"); String s=q.getText().toString().trim(); boolean found=false; for(Policy p:policies){if(p.customer.contains(s)||p.plate.contains(s)||p.policyNo.contains(s)){found=true;content.addView(text(p.customer+" | "+p.plate+"\nبیمه‌نامه: "+p.policyNo+"\nمانده: "+money.format(p.debt()),16));}} if(!found)content.addView(text("موردی پیدا نشد.",18));}).show();
+    }
+
+    private void showBackup(){
+        StringBuilder sb=new StringBuilder("تعداد رکورد: ").append(policies.size()).append("\n\n"); for(Policy p:policies) sb.append(p.customer).append(" | ").append(p.plate).append(" | مانده: ").append(money.format(p.debt())).append(" تومان\n");
+        new AlertDialog.Builder(this).setTitle("خلاصه پشتیبان").setMessage(sb.toString()).setPositiveButton("باشه",null).show();
+    }
+
+    private void saveData(){
+        try{JSONArray arr=new JSONArray(); for(Policy p:policies){JSONObject o=new JSONObject();o.put("customer",p.customer);o.put("phone",p.phone);o.put("plate",p.plate);o.put("policyNo",p.policyNo);o.put("total",p.total);o.put("down",p.down);o.put("paid",p.paid);o.put("installments",p.installments);o.put("firstDue",p.firstDue);o.put("note",p.note);arr.put(o);} prefs.edit().putString(KEY_POLICIES,arr.toString()).apply();}catch(Exception ignored){}
+    }
+
+    private void loadData(){
+        policies.clear(); String raw=prefs.getString(KEY_POLICIES,"[]"); try{JSONArray arr=new JSONArray(raw); for(int i=0;i<arr.length();i++){JSONObject o=arr.getJSONObject(i);Policy p=new Policy();p.customer=o.optString("customer");p.phone=o.optString("phone");p.plate=o.optString("plate");p.policyNo=o.optString("policyNo");p.total=o.optLong("total");p.down=o.optLong("down");p.paid=o.optLong("paid");p.installments=o.optInt("installments");p.firstDue=o.optString("firstDue");p.note=o.optString("note");policies.add(p);}}catch(Exception ignored){}
     }
 }
