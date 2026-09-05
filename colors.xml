@@ -1,13 +1,12 @@
 <resources>
-    <color name="navy">#0B1F33</color>
-    <color name="blue">#1565D8</color>
-    <color name="cyan">#12B8C8</color>
-    <color name="green">#17A673</color>
-    <color name="orange">#F59E0B</color>
-    <color name="red">#E14D5A</color>
-    <color name="bg">#F4F7FB</color>
-    <color name="card">#FFFFFF</color>
-    <color name="text">#12233A</color>
-    <color name="muted">#6B7A90</color>
-    <color name="line">#E5EAF2</color>
+    <color name="brand">#0B6B53</color>
+    <color name="brand_dark">#064C3C</color>
+    <color name="accent">#D5A94B</color>
+    <color name="bg">#F5F7F6</color>
+    <color name="surface">#FFFFFF</color>
+    <color name="text">#17211E</color>
+    <color name="muted">#64716C</color>
+    <color name="danger">#B3261E</color>
+    <color name="success">#16794D</color>
+    <color name="warning">#9B6500</color>
 </resources>
